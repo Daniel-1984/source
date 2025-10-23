@@ -1,9 +1,13 @@
-/*
-+-----------------------------------------------------------------------------+
-| Programa.: JDAPIVEN.tlpp                                                    |
-| Autor....: Daniel.alves                                                     |
-| Data.....: 23/10/2025 - CORRIGIDO PARA SA3990                              |
-+-----------------------------------------------------------------------------+
+
+/* 
++-----------------------------------------------------------------------------------+
+| Programa : JDAPIVEN.tlpp                                                          |
+| Descrição: API REST - Integração de Vendedores (John Deere)                       |
+| Autor    : Daniel Alves                                                           |
+| Data     : 23/10/2025                                                             |
+| Objetivo : Expor endpoints REST para consulta e atualização de vendedores          |
+| Observação: Utiliza tabela SA3 (Vendedores)                                       |
++-----------------------------------------------------------------------------------+
 */
 
 #Include 'totvs.ch'
@@ -11,9 +15,13 @@
 #Include "topconn.ch"
 
 Namespace johndeere.api.vendedores
+
+//-------------------------------------------------------------------
+// GET - Lista todos os vendedores
+//-------------------------------------------------------------------
 //-------------------------------------------------------------------
 /*/{Protheus.doc} Lista TODOS os Vendedores
-GET - Lista todos os vendedores
+GET - Retorna lista completa de vendedores cadastrados
 
 @type    function
 @author  Daniel.alves
@@ -124,8 +132,15 @@ User Function ListaVendedores() As Logical
 	oRest:setResponse(jResult:toJson())
 
 Return .T.
+
+
+
+//-------------------------------------------------------------------
+// GET - Busca vendedor específico
+//-------------------------------------------------------------------
+
 /*/{Protheus.doc} Busca Vendedor Específico
-GET - Busca vendedor por código
+GET - Retorna dados de um vendedor específico
 
 @type    function
 @author  Daniel.alves
@@ -267,8 +282,9 @@ User Function VendedorEspecifico() As Logical
 
 Return .T.
 
-
-//-------------------------------------------------------------------
+//=============================================================================
+// PUT - Atualiza dados de um vendedor
+//=============================================================================
 /*/{Protheus.doc} Atualiza Cadastro Vendedor
 PUT - Atualiza vendedor usando ExecAuto MATA040
 Recebe o código via HEADER
