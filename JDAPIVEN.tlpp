@@ -1,0 +1,547 @@
+/*
++-----------------------------------------------------------------------------+
+| Programa.: JDAPIVEN.tlpp                                                    |
+| Autor....: Daniel.alves                                                     |
+| Data.....: 23/10/2025 - CORRIGIDO PARA SA3990                              |
++-----------------------------------------------------------------------------+
+*/
+
+#Include 'totvs.ch'
+#Include 'tlpp-core.th'
+#Include "topconn.ch"
+
+Namespace johndeere.api.vendedores
+//-------------------------------------------------------------------
+/*/{Protheus.doc} Lista TODOS os Vendedores
+GET - Lista todos os vendedores
+
+@type    function
+@author  Daniel.alves
+@since   22/10/2025
+@return  logical
+/*/
+//-------------------------------------------------------------------
+@Get('/johndeere/vendedores')
+User Function ListaVendedores() As Logical
+
+	Local jResult       As Json
+	Local jVendedor     As Json
+	Local cQuery        As Character
+	Local cAlias        As Character
+	Local aVendedores   As Array
+	Local nCount        As Numeric
+	Local cFilSA3       As Character
+	Local cTabela       As Character
+
+	cAlias      := GetNextAlias()
+	aVendedores := {}
+	nCount      := 0
+	cFilSA3     := xFilial("SA3")
+	cTabela     := RetSqlName("SA3")  // Isso retorna SA3990
+	jResult     := JsonObject():New()
+
+	ConOut("[JDAPIVEN] GET - Lista TODOS Vendedores")
+	ConOut("[JDAPIVEN] Tabela utilizada: " + cTabela)
+	ConOut("[JDAPIVEN] Filial: " + cFilSA3)
+
+	// SQL DIRETO com nome correto da tabela
+	cQuery := " SELECT "
+	cQuery += "     A3_FILIAL, A3_COD, A3_NOME, A3_NREDUZ, "
+	cQuery += "     A3_END, A3_BAIRRO, A3_MUN, A3_EST, "
+	cQuery += "     A3_CEP, A3_TEL, A3_EMAIL, "
+	cQuery += "     A3_TIPO, A3_COMIS, A3_MSBLQL, A3_DDDTEL, A3_FAX "
+	cQuery += " FROM " + cTabela + " SA3 "
+	cQuery += " WHERE SA3.D_E_L_E_T_ = ' ' "
+
+	// Se a filial não for compartilhada, adiciona filtro
+	If !Empty(cFilSA3)
+		cQuery += "   AND SA3.A3_FILIAL = '" + cFilSA3 + "' "
+	EndIf
+
+	cQuery += " ORDER BY A3_COD "
+
+	cQuery := ChangeQuery(cQuery)
+
+	ConOut("[JDAPIVEN] Query: " + cQuery)
+
+	If Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	EndIf
+
+	DbUseArea(.T., "TOPCONN", TCGenQry(,,cQuery), cAlias, .F., .T.)
+
+	If (cAlias)->(Eof())
+		(cAlias)->(DbCloseArea())
+
+		ConOut("[JDAPIVEN] Nenhum vendedor encontrado")
+
+		jResult['success']    := .T.
+		jResult['total']      := 0
+		jResult['vendedores'] := {}
+		jResult['mensagem']   := 'Nenhum vendedor cadastrado'
+
+		oRest:setStatusCode(200)
+		oRest:setResponse(jResult:toJson())
+		Return .T.
+	EndIf
+
+	While (cAlias)->(!Eof())
+
+		jVendedor := JsonObject():New()
+		jVendedor['filial']       := AllTrim((cAlias)->A3_FILIAL)
+		jVendedor['codigo']       := AllTrim((cAlias)->A3_COD)
+		jVendedor['nome']         := AllTrim((cAlias)->A3_NOME)
+		jVendedor['nomeReduzido'] := AllTrim((cAlias)->A3_NREDUZ)
+		jVendedor['endereco']     := AllTrim((cAlias)->A3_END)
+		jVendedor['bairro']       := AllTrim((cAlias)->A3_BAIRRO)
+		jVendedor['municipio']    := AllTrim((cAlias)->A3_MUN)
+		jVendedor['estado']       := AllTrim((cAlias)->A3_EST)
+		jVendedor['cep']          := AllTrim((cAlias)->A3_CEP)
+		jVendedor['telefone']     := AllTrim((cAlias)->A3_TEL)
+		jVendedor['ddd']          := AllTrim((cAlias)->A3_DDDTEL)
+		jVendedor['fax']          := AllTrim((cAlias)->A3_FAX)
+		jVendedor['email']        := AllTrim((cAlias)->A3_EMAIL)
+		jVendedor['tipo']         := AllTrim((cAlias)->A3_TIPO)
+		jVendedor['comissao']     := (cAlias)->A3_COMIS
+		jVendedor['bloqueado']    := AllTrim((cAlias)->A3_MSBLQL)
+
+		aAdd(aVendedores, jVendedor)
+		nCount++
+
+		(cAlias)->(DbSkip())
+	EndDo
+
+	(cAlias)->(DbCloseArea())
+
+	ConOut("[JDAPIVEN] Total encontrado: " + cValToChar(nCount))
+
+	jResult['success']    := .T.
+	jResult['total']      := nCount
+	jResult['vendedores'] := aVendedores
+	jResult['mensagem']   := 'Consulta realizada com sucesso'
+
+	oRest:setStatusCode(200)
+	oRest:setResponse(jResult:toJson())
+
+Return .T.
+/*/{Protheus.doc} Busca Vendedor Específico
+GET - Busca vendedor por código
+
+@type    function
+@author  Daniel.alves
+@since   22/10/2025
+@return  logical
+/*/
+//-------------------------------------------------------------------
+	@Get('/johndeere/buscar_vendedor/:codigo')
+User Function VendedorEspecifico() As Logical
+
+	Local jResult     As Json
+	Local jQuery      As Json
+	Local cQuery      As Character
+	Local cAlias      As Character
+	Local cCodigo     As Character
+	Local cFilSA3     As Character
+	Local cTabela     As Character
+	Local cUrl        As Character
+	Local nPos        As Numeric
+	Default oRest     := Nil
+
+	cAlias   := GetNextAlias()
+	cFilSA3  := xFilial("SA3")
+	cTabela  := RetSqlName("SA3")
+	jResult  := JsonObject():New()
+	cCodigo  := ""
+
+	// ============================================================
+	// CAPTURA DO PARÂMETRO CODIGO (universal)
+	// ============================================================
+	Begin Sequence
+		jQuery := oRest:getQueryRequest()
+		If ValType(jQuery) == "J" .And. jQuery:HasProperty("codigo")
+			cCodigo := jQuery["codigo"]
+			ConOut("[JDAPIVEN] Capturado via query string: " + cCodigo)
+		EndIf
+
+		If Empty(cCodigo) .And. Type("oRest:cRequest") == "C"
+			cUrl := oRest:cRequest
+			ConOut("[JDAPIVEN] URL completa (cRequest): " + cUrl)
+			nPos := At("/vendedores/", cUrl)
+			If nPos > 0
+				cCodigo := SubStr(cUrl, nPos + 12)
+				nPos := At("?", cCodigo)
+				If nPos > 0
+					cCodigo := SubStr(cCodigo, 1, nPos - 1)
+				EndIf
+			EndIf
+		EndIf
+		Recover
+		cCodigo := ""
+	End Sequence
+
+	cCodigo := AllTrim(cCodigo)
+
+	ConOut("[JDAPIVEN] ========================================")
+	ConOut("[JDAPIVEN] GET Especifico - Busca Vendedor")
+	ConOut("[JDAPIVEN] ========================================")
+	ConOut("[JDAPIVEN] Codigo extraido: [" + cCodigo + "]")
+	ConOut("[JDAPIVEN] Tabela: " + cTabela)
+	ConOut("[JDAPIVEN] Filial: " + cFilSA3)
+
+	If Empty(cCodigo)
+		ConOut("[JDAPIVEN] ERRO: Codigo vazio")
+		jResult['success'] := .F.
+		jResult['erro']    := 'Código do vendedor não informado. Use: /johndeere/vendedores?codigo=00002'
+		oRest:setStatusCode(400)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	// ============================================================
+	// QUERY
+	// ============================================================
+	cQuery := " SELECT "
+	cQuery += "     A3_FILIAL, A3_COD, A3_NOME, A3_NREDUZ, "
+	cQuery += "     A3_END, A3_BAIRRO, A3_MUN, A3_EST, "
+	cQuery += "     A3_CEP, A3_TEL, A3_EMAIL, "
+	cQuery += "     A3_TIPO, A3_COMIS, A3_MSBLQL, A3_DDDTEL, A3_FAX "
+	cQuery += " FROM " + cTabela + " SA3 "
+	cQuery += " WHERE SA3.D_E_L_E_T_ = ' ' "
+
+	If !Empty(cFilSA3)
+		cQuery += "   AND SA3.A3_FILIAL = '" + cFilSA3 + "' "
+	EndIf
+
+	cQuery += "   AND (SA3.A3_COD = '" + PadL(cCodigo, 5, '0') + "' "
+	cQuery += "    OR SA3.A3_COD = '" + PadL(cCodigo, 6, '0') + "' "
+	cQuery += "    OR SA3.A3_COD = '" + cCodigo + "') "
+
+	cQuery := ChangeQuery(cQuery)
+
+	ConOut("[JDAPIVEN] Query: " + cQuery)
+
+	If Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	EndIf
+
+	DbUseArea(.T., "TOPCONN", TCGenQry(,,cQuery), cAlias, .F., .T.)
+
+	If (cAlias)->(Eof())
+		(cAlias)->(DbCloseArea())
+		ConOut("[JDAPIVEN] Vendedor NAO encontrado")
+		jResult['success'] := .F.
+		jResult['erro']    := 'Vendedor não encontrado'
+		jResult['codigo']  := cCodigo
+		oRest:setStatusCode(404)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	// ============================================================
+	// RETORNO JSON
+	// ============================================================
+	ConOut("[JDAPIVEN] ENCONTRADO: " + AllTrim((cAlias)->A3_NOME))
+
+	jResult['success']        := .T.
+	jResult['filial']         := AllTrim((cAlias)->A3_FILIAL)
+	jResult['codigo']         := AllTrim((cAlias)->A3_COD)
+	jResult['nome']           := AllTrim((cAlias)->A3_NOME)
+	jResult['nomeReduzido']   := AllTrim((cAlias)->A3_NREDUZ)
+	jResult['endereco']       := AllTrim((cAlias)->A3_END)
+	jResult['bairro']         := AllTrim((cAlias)->A3_BAIRRO)
+	jResult['municipio']      := AllTrim((cAlias)->A3_MUN)
+	jResult['estado']         := AllTrim((cAlias)->A3_EST)
+	jResult['cep']            := AllTrim((cAlias)->A3_CEP)
+	jResult['telefone']       := AllTrim((cAlias)->A3_TEL)
+	jResult['ddd']            := AllTrim((cAlias)->A3_DDDTEL)
+	jResult['fax']            := AllTrim((cAlias)->A3_FAX)
+	jResult['email']          := AllTrim((cAlias)->A3_EMAIL)
+	jResult['tipo']           := AllTrim((cAlias)->A3_TIPO)
+	jResult['comissao']       := (cAlias)->A3_COMIS
+	jResult['bloqueado']      := AllTrim((cAlias)->A3_MSBLQL)
+
+	(cAlias)->(DbCloseArea())
+
+	oRest:setStatusCode(200)
+	oRest:setResponse(jResult:toJson())
+
+Return .T.
+
+
+//-------------------------------------------------------------------
+/*/{Protheus.doc} Atualiza Cadastro Vendedor
+PUT - Atualiza vendedor usando ExecAuto MATA040
+Recebe o código via HEADER
+
+@type    function
+@author  Daniel.alves
+@since   23/10/2025
+@return  logical
+/*/
+//-------------------------------------------------------------------
+	@Put('/johndeere/atualizar_vendedores')
+User Function AtualizaVendedor() As Logical
+
+	Local jBodyReq      As Json
+	Local jResult       As Json
+	Local jHeader       As Json
+	Local cCodigo       As Character
+	Local cCodigoPad    As Character
+	Local cBody         As Character
+	Local aVendedor     As Array
+	Local cErro         As Character
+	Local aErroAuto     As Array
+	Local nX            As Numeric
+	Local lTemAlteracao As Logical
+	Local lAchou        As Logical
+
+	Private lMsErroAuto    := .F.
+	Private lMsHelpAuto    := .T.
+	Private lAutoErrNoFile := .T.
+
+	// Inicializa variáveis
+	jResult    := JsonObject():New()
+	aVendedor  := {}
+	cErro      := ""
+	lTemAlteracao := .F.
+	cCodigo    := ""
+	lAchou     := .F.
+
+	// ===== PEGA O CÓDIGO DO HEADER =====
+	jHeader := oRest:getHeaderRequest()
+
+	ConOut("[JDAPIVEN] ========================================")
+	ConOut("[JDAPIVEN] PUT - Alteracao de Vendedor")
+	ConOut("[JDAPIVEN] ========================================")
+
+	// Header vem como objeto JSON
+	If ValType(jHeader) == "J"
+		If jHeader:HasProperty('codigo')
+			cCodigo := jHeader['codigo']
+		ElseIf jHeader:HasProperty('CODIGO')
+			cCodigo := jHeader['CODIGO']
+		ElseIf jHeader:HasProperty('Codigo')
+			cCodigo := jHeader['Codigo']
+		EndIf
+	EndIf
+
+	// Pega Body
+	cBody := oRest:getBodyRequest()
+
+	// Remove espaços do código
+	cCodigo := AllTrim(cCodigo)
+
+	ConOut("[JDAPIVEN] Codigo original (header): [" + cCodigo + "]")
+	ConOut("[JDAPIVEN] Body recebido: " + cBody)
+	ConOut("[JDAPIVEN] Filial: " + xFilial("SA3"))
+
+	// Validação do código
+	If Empty(cCodigo)
+		ConOut("[JDAPIVEN] ERRO: Codigo vazio")
+		jResult['success'] := .F.
+		jResult['erro']    := 'Código não informado no header'
+		oRest:setStatusCode(400)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	// ===== BUSCA O VENDEDOR COM PADDING FLEXÍVEL =====
+	DbSelectArea("SA3")
+	SA3->(DbSetOrder(1)) // A3_FILIAL + A3_COD
+
+	// Tenta com 5 caracteres
+	cCodigoPad := PadL(cCodigo, 5, '0')
+	If SA3->(DbSeek(xFilial("SA3") + cCodigoPad))
+		lAchou := .T.
+		cCodigo := cCodigoPad
+		ConOut("[JDAPIVEN] Vendedor encontrado com 5 caracteres: " + cCodigo)
+	Else
+		// Tenta com 6 caracteres
+		cCodigoPad := PadL(cCodigo, 6, '0')
+		If SA3->(DbSeek(xFilial("SA3") + cCodigoPad))
+			lAchou := .T.
+			cCodigo := cCodigoPad
+			ConOut("[JDAPIVEN] Vendedor encontrado com 6 caracteres: " + cCodigo)
+		Else
+			// Tenta sem padding (como veio)
+			If SA3->(DbSeek(xFilial("SA3") + cCodigo))
+				lAchou := .T.
+				ConOut("[JDAPIVEN] Vendedor encontrado sem padding: " + cCodigo)
+			EndIf
+		EndIf
+	EndIf
+
+	If !lAchou
+		ConOut("[JDAPIVEN] ERRO: Vendedor NAO encontrado")
+		ConOut("[JDAPIVEN] Codigo buscado: " + cCodigo)
+		ConOut("[JDAPIVEN] Filial: " + xFilial("SA3"))
+
+		jResult['success'] := .F.
+		jResult['erro']    := 'Vendedor não encontrado'
+		jResult['codigo']  := cCodigo
+		jResult['filial']  := xFilial("SA3")
+		oRest:setStatusCode(404)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	ConOut("[JDAPIVEN] Vendedor ENCONTRADO!")
+	ConOut("[JDAPIVEN] Nome: " + AllTrim(SA3->A3_NOME))
+	ConOut("[JDAPIVEN] Codigo BD: " + SA3->A3_COD)
+
+	// Usa o código como está no banco
+	cCodigo := SA3->A3_COD
+
+	// Validação do JSON
+	If Empty(cBody)
+		ConOut("[JDAPIVEN] ERRO: Body vazio")
+		jResult['success'] := .F.
+		jResult['erro']    := 'Body vazio'
+		oRest:setStatusCode(400)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	// ===== CRIA NOVO OBJETO JSON AQUI =====
+	jBodyReq := JsonObject():New()
+
+	// Parse JSON
+	If !jBodyReq:fromJson(cBody)
+		ConOut("[JDAPIVEN] Tentando FWJsonDeserialize...")
+
+		jBodyReq := Nil
+		FWJsonDeserialize(cBody, @jBodyReq)
+
+		If jBodyReq == Nil
+			ConOut("[JDAPIVEN] ERRO: FWJsonDeserialize tambem falhou")
+			jResult['success'] := .F.
+			jResult['erro']    := 'JSON inválido no body'
+			oRest:setStatusCode(400)
+			oRest:setResponse(jResult:toJson())
+			Return .F.
+		EndIf
+
+		ConOut("[JDAPIVEN] JSON parseado com FWJsonDeserialize!")
+	Else
+		ConOut("[JDAPIVEN] JSON parseado com sucesso!")
+	EndIf
+
+	// Monta array ExecAuto
+	aAdd(aVendedor, {"A3_COD", cCodigo, Nil})
+
+	// Campos - Verifica tipo do objeto
+	If ValType(jBodyReq) == "J" // JsonObject
+		If jBodyReq:HasProperty('telefone')
+			aAdd(aVendedor, {"A3_TEL", AllTrim(jBodyReq['telefone']), Nil})
+			lTemAlteracao := .T.
+			ConOut("[JDAPIVEN] Campo: A3_TEL = " + jBodyReq['telefone'])
+		EndIf
+
+		If jBodyReq:HasProperty('email')
+			aAdd(aVendedor, {"A3_EMAIL", Lower(AllTrim(jBodyReq['email'])), Nil})
+			lTemAlteracao := .T.
+			ConOut("[JDAPIVEN] Campo: A3_EMAIL = " + jBodyReq['email'])
+		EndIf
+
+		If jBodyReq:HasProperty('nome')
+			aAdd(aVendedor, {"A3_NOME", Upper(AllTrim(jBodyReq['nome'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('nomeReduzido')
+			aAdd(aVendedor, {"A3_NREDUZ", Upper(AllTrim(jBodyReq['nomeReduzido'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('endereco')
+			aAdd(aVendedor, {"A3_END", Upper(AllTrim(jBodyReq['endereco'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('bairro')
+			aAdd(aVendedor, {"A3_BAIRRO", Upper(AllTrim(jBodyReq['bairro'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('municipio')
+			aAdd(aVendedor, {"A3_MUN", Upper(AllTrim(jBodyReq['municipio'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('estado')
+			aAdd(aVendedor, {"A3_EST", Upper(AllTrim(jBodyReq['estado'])), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+		If jBodyReq:HasProperty('cep')
+			aAdd(aVendedor, {"A3_CEP", AllTrim(jBodyReq['cep']), Nil})
+			lTemAlteracao := .T.
+		EndIf
+
+	ElseIf ValType(jBodyReq) == "O" // Object (FWJsonDeserialize)
+		If AttIsMemberOf(jBodyReq, "telefone")
+			aAdd(aVendedor, {"A3_TEL", AllTrim(jBodyReq:telefone), Nil})
+			lTemAlteracao := .T.
+			ConOut("[JDAPIVEN] Campo: A3_TEL = " + jBodyReq:telefone)
+		EndIf
+
+		If AttIsMemberOf(jBodyReq, "email")
+			aAdd(aVendedor, {"A3_EMAIL", Lower(AllTrim(jBodyReq:email)), Nil})
+			lTemAlteracao := .T.
+			ConOut("[JDAPIVEN] Campo: A3_EMAIL = " + jBodyReq:email)
+		EndIf
+
+		If AttIsMemberOf(jBodyReq, "nome")
+			aAdd(aVendedor, {"A3_NOME", Upper(AllTrim(jBodyReq:nome)), Nil})
+			lTemAlteracao := .T.
+		EndIf
+	EndIf
+
+	If !lTemAlteracao
+		ConOut("[JDAPIVEN] ERRO: Nenhum campo para alterar")
+		jResult['success'] := .F.
+		jResult['erro']    := 'Nenhum campo válido informado'
+		oRest:setStatusCode(400)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	EndIf
+
+	ConOut("[JDAPIVEN] ========================================")
+	ConOut("[JDAPIVEN] Iniciando MATA040 - Operacao 4")
+	ConOut("[JDAPIVEN] Total de campos: " + cValToChar(Len(aVendedor)))
+	ConOut("[JDAPIVEN] ========================================")
+
+	// ExecAuto
+	MSExecAuto({|x,y| MATA040(x,y)}, aVendedor, 4)
+
+	If lMsErroAuto
+		aErroAuto := GetAutoGRLog()
+		cErro := ""
+		For nX := 1 To Len(aErroAuto)
+			cErro += AllTrim(aErroAuto[nX]) + Chr(13) + Chr(10)
+		Next nX
+
+		ConOut("[JDAPIVEN] ========================================")
+		ConOut("[JDAPIVEN] ERRO NO EXECAUTO:")
+		ConOut("[JDAPIVEN] " + cErro)
+		ConOut("[JDAPIVEN] ========================================")
+
+		jResult['success']  := .F.
+		jResult['erro']     := 'Erro ao atualizar vendedor'
+		jResult['detalhes'] := cErro
+		oRest:setStatusCode(500)
+		oRest:setResponse(jResult:toJson())
+		Return .F.
+	Else
+		ConOut("[JDAPIVEN] ========================================")
+		ConOut("[JDAPIVEN] SUCESSO! Vendedor atualizado")
+		ConOut("[JDAPIVEN] ========================================")
+
+		jResult['success']  := .T.
+		jResult['mensagem'] := 'Vendedor atualizado com sucesso'
+		jResult['codigo']   := cCodigo
+		oRest:setStatusCode(200)
+		oRest:setResponse(jResult:toJson())
+	EndIf
+
+Return .T.
