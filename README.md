@@ -4,6 +4,13 @@ https://tdn.totvs.com/display/public/framework/REST
 
 https://tdn.totvs.com/display/public/PROT/MATA040
 
+- ✅ **Busca Flexível de Código**: Aceita códigos com 5 ou 6 dígitos
+- ✅ **Validação de JSON**: Suporte a `JsonObject` e `FWJsonDeserialize`
+- ✅ **Tratamento de Erros**: Logs detalhados e mensagens claras
+- ✅ **ExecAuto MATA040**: Integração com rotina padrão do Protheus
+- ✅ **SQL Direto**: Queries otimizadas para alta performance
+- ✅ **HTTP Status Codes**: Implementação correta (200, 400, 404, 500)
+
 
 📘 API REST - Desenvolver uma API RESTFULL em advpl Tlpp - que permita a recuperação e atualização (GET e PUT) de registro de vendedores na tabela (SA3 )
 Get e Put (Protheus TLPP)
