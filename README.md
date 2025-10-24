@@ -1,7 +1,10 @@
-📘 API REST - Gestão de Vendedores (Protheus TLPP)
+📘 API REST - Desenvolver uma API RESTFULL em advpl Tlpp - que permita a recuperação e atualização (GET e PUT) de registro de vendedores na tabela (SA3 )
+Get e Put (Protheus TLPP)
+
 🎯 Descrição do Projeto
+API RESTFULL em advpl Tlpp - que permita a recuperação e atualização (GET e PUT) de registro de vendedores na tabela (SA3 )
 API REST desenvolvida em TLPP (TOTVS Language++) para integração com o sistema Protheus ERP.
-Implementa operações CRUD para gestão de cadastro de vendedores (tabela SA3), permitindo consultas e atualizações via requisições HTTP.
+Implementa operações cadastro de vendedores (tabela SA3), permitindo consultas e atualizações via requisições HTTP.
 
 🚀 Tecnologias Utilizadas
 
@@ -10,7 +13,7 @@ Protheus 12.1.2410 - ERP Base
 SQL - Banco de dados
 REST API - Arquitetura de comunicação
 JSON - Formato de dados
-Postaman
+Postman
 
 
 📋 Funcionalidades
