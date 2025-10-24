@@ -40,7 +40,11 @@ Postman
 
 📋 Funcionalidades
 ✅ Endpoints Disponíveis
-MétodoEndpointDescriçãoGET/johndeere/vendedoresLista todos os vendedores cadastradosGET/johndeere/vendedores/:codigoBusca vendedor específico por códigoPUT/johndeere/atualizar_vendedoresAtualiza dados de um vendedor
+MétodoEndpointDescrição
+GET/johndeere/vendedoresLista todos os vendedores
+cadastradosGET/johndeere/vendedores/:codigo
+Busca vendedor específico por código
+PUT/johndeere/atualizar_vendedoresAtualiza dados de um vendedor
 
 
 
