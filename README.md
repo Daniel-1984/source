@@ -1,8 +1,16 @@
+
+
 https://tdn.totvs.com/display/tec/TLPP
 
 https://tdn.totvs.com/display/public/framework/REST
 
 https://tdn.totvs.com/display/public/PROT/MATA040
+## 📊 Estrutura do Código
+```
+JDAPIVEN.tlpp
+├── ListaVendedores()        # GET - Lista todos
+├── VendedorEspecifico()     # GET - Busca por código
+└── AtualizaVendedor()       # PUT - Atualiza dados
 
 - ✅ **Busca Flexível de Código**: Aceita códigos com 5 ou 6 dígitos
 - ✅ **Validação de JSON**: Suporte a `JsonObject` e `FWJsonDeserialize`
@@ -45,15 +53,9 @@ Acesso ao banco de dados SQL
 VSCode com extensão AdvPL/TLPP
 ## 📊 Estrutura do Código
 ```
-JDAPIVEN.tlpp
-├── ListaVendedores()        # GET - Lista todos
-├── VendedorEspecifico()     # GET - Busca por código
-└── AtualizaVendedor()       # PUT - Atualiza dados
 
 <img width="1202" height="615" alt="image" src="https://github.com/user-attachments/assets/7a49cb54-83b2-4547-b82c-5262f8e97df6" />
 <img width="1177" height="188" alt="image" src="https://github.com/user-attachments/assets/57867d09-46df-4c4b-adad-3bbb857e7125" />
 <img width="1027" height="425" alt="image" src="https://github.com/user-attachments/assets/4c665836-1098-461d-ba84-5a1ad97746b7" />
 <img width="901" height="546" alt="retornoatulizacao" src="https://github.com/user-attachments/assets/21d47a8c-dd19-4c89-84ec-d09a79b1599a" />
-
-
 <img width="819" height="565" alt="testeJohndeere" src="https://github.com/user-attachments/assets/739cd4c5-768e-4c04-bdf7-36138725f6aa" />
