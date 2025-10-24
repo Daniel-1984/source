@@ -1,6 +1,9 @@
 https://tdn.totvs.com/display/tec/TLPP
+
 https://tdn.totvs.com/display/public/framework/REST
+
 https://tdn.totvs.com/display/public/PROT/MATA040
+
 
 📘 API REST - Desenvolver uma API RESTFULL em advpl Tlpp - que permita a recuperação e atualização (GET e PUT) de registro de vendedores na tabela (SA3 )
 Get e Put (Protheus TLPP)
