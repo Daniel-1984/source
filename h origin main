@@ -1,0 +1,17 @@
+[33mcommit 69b15a63cb1a909b4476447793f7f428bc751bb3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Daniel <teceletrotecnica84@gmail.com>
+Date:   Mon Oct 27 12:07:42 2025 -0300
+
+    feat: implementa endpoint JDAPIVENPost para tratamento de JSON
+
+[33mcommit c2150367fa9334c054f7f9561e9e110cc522ff7b[m
+Author: Daniel <teceletrotecnica84@gmail.com>
+Date:   Thu Oct 23 16:54:52 2025 -0300
+
+    johndeere
+
+[33mcommit c0036de2ba910d6989177d3dec62a67eb3e775f0[m
+Author: Daniel <teceletrotecnica84@gmail.com>
+Date:   Thu Oct 23 16:41:44 2025 -0300
+
+    first commit
