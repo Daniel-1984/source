@@ -1,0 +1,594 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+#Include "TopConn.ch"
+
+//Declaração da namespace
+Namespace johndeere.api.vendedores
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10) //Carriage Return Line Feed
+
+/*/{Protheus.doc} User Function JDAPIVENGetId
+API -CRUD-VENDEDORES - Busca de apenas 1 registro
+@author Daniel Luiz Alves
+@since 25/10/2025
+@version 1.0
+@type User Function
+@obs Parâmetros a receber na requisição:
+    id = Código do Registro na Tabela
+@example No seu Postman
+http://127.0.0.1:8001/rest/JDAPIVEN/get/id?id=XXXX
+/*/
+
+@Get("JDAPIVEN/get/id/")
+User Function JDAPIVENGetId()
+	Local jResponse := JsonObject():New() As Json
+	Local jPath                           As Json
+	Local cAliasWS  := 'SA3'              As Character
+
+	//Busca os dados que o usuário informou
+	jPath := JsonObject():New()
+	jPath := oRest:getQueryRequest()
+
+	//Caso haja conteúdo e não esteja vazio o ID
+	If jPath != Nil .And. ! Empty(jPath:GetJsonObject('id'))
+
+		DbSelectArea(cAliasWS)
+		(cAliasWS)->(DbSetOrder(1))
+
+		//Se não encontrar o registro
+		If ! (cAliasWS)->(MsSeek(FWxFilial(cAliasWS) + jPath:GetJsonObject('id') ))
+			oRest:setStatusCode(500)
+			jResponse['errorId']  := 'ID002'
+			jResponse['error']    := 'ID não encontrado'
+			jResponse['solution'] := 'Código ID não encontrado na tabela ' + cAliasWS + ', informe outro código'
+
+			//Define o retorno
+		Else
+			//Define o retorno
+			jResponse['filial'] := (cAliasWS)->A3_FILIAL
+			jResponse['cod'] := (cAliasWS)->A3_COD
+			jResponse['nome'] := (cAliasWS)->A3_NOME
+			jResponse['nreduz'] := (cAliasWS)->A3_NREDUZ
+			jResponse['mun'] := (cAliasWS)->A3_MUN
+			jResponse['est'] := (cAliasWS)->A3_EST
+			jResponse['cep'] := (cAliasWS)->A3_CEP
+			jResponse['tel'] := (cAliasWS)->A3_TEL
+			jResponse['dddtel'] := (cAliasWS)->A3_DDDTEL
+			jResponse['fax'] := (cAliasWS)->A3_FAX
+			jResponse['email'] := (cAliasWS)->A3_EMAIL
+			jResponse['tipo'] := (cAliasWS)->A3_TIPO
+			jResponse['comis'] := (cAliasWS)->A3_COMIS
+			jResponse['msblql'] := (cAliasWS)->A3_MSBLQL
+		EndIf
+
+		//Do contrário, irá retornar uma mensagem que não foi encontrado
+	Else
+		oRest:setStatusCode(500)
+		jResponse['errorId']  := 'ID001'
+		jResponse['error']    := 'ID vazio'
+		jResponse['solution'] := 'Informe o ID'
+	EndIf
+
+	//Encerra retornando o JSON
+	oRest:setKeyHeaderResponse('Content-Type','application/json')
+	oRest:setResponse(jResponse:toJSON())
+Return
+
+/*/{Protheus.doc} User Function JDAPIVENGetAll
+API -CRUD-VENDEDORES - Busca todos registros com paginação
+@author Daniel Luiz Alves
+@since 25/10/2025
+@version 1.0
+@type User Function
+@example No seu Postman, supondo que seja localhost na porta 8401, fica:
+     http://127.0.0.1:8001/rest/JDAPIVEN/get/all
+     
+     Ou, se quiser passar parâmetros para filtrar:
+     http://127.0.0.1:8401/rest/JDAPIVEN/get/all?limit=5&page=2
+/*/
+
+	@Get("JDAPIVEN/get/all/")
+User Function JDAPIVENGetAll()
+	Local jResponse        := JsonObject():New() As Json
+	Local jPath                                  As Json
+	Local cAliasWS         := 'SA3'              As Character
+	Local cQuery           := ''                 As Character
+	Local nRegisterPerPage := 10                 As Numeric
+	Local nTotalRegisters  := 0                  As Numeric
+	Local nPagesTotal      := 0                  As Numeric
+	Local nCurrentPage     := 0                  As Numeric
+	Local nCurrentRegister := 0                  As Numeric
+	Local jData                                  As Json
+
+	//Busca os dados que o usuário informou
+	jPath := JsonObject():New()
+	jPath := oRest:getQueryRequest()
+
+	//Caso haja conteúdo
+	If jPath != Nil
+		//Gravando log de como que esta o jPath
+		//MemoWrite("\spool\jPath.html", VarInfo("jPath", jPath))
+
+		//Efetua a busca dos registros
+		cQuery := " SELECT " + CRLF
+		cQuery += "     TAB.R_E_C_N_O_ AS TABREC " + CRLF
+		cQuery += " FROM " + CRLF
+		cQuery += "     " + RetSQLName(cAliasWS) + " TAB " + CRLF
+		cQuery += " WHERE " + CRLF
+		cQuery += "     TAB.D_E_L_E_T_ = '' " + CRLF
+		cQuery += " ORDER BY " + CRLF
+		cQuery += "     TABREC " + CRLF
+		TCQuery cQuery New Alias 'QRY_TAB'
+
+		//Se não encontrar registros
+		If QRY_TAB->(EoF())
+			oRest:setStatusCode(500)
+			jResponse['errorId']  := 'ALL002'
+			jResponse['error']    := 'Registro(s) não encontrado(s)'
+			jResponse['solution'] := 'A consulta de registros não retornou nenhuma informação'
+		Else
+			jResponse['objects'] := {}
+
+			//Conta o total de registros
+			Count To nTotalRegisters
+			QRY_TAB->(DbGoTop())
+
+			//O tamanho do retorno, será o limit, se ele estiver definido
+			If ! Empty(jPath:GetJsonObject('limit'))
+				nRegisterPerPage := Val(jPath:GetJsonObject('limit'))
+			EndIf
+
+			//Pegando total de páginas
+			nPagesTotal := NoRound(nTotalRegisters / nRegisterPerPage, 0)
+			nPagesTotal += Iif(nTotalRegisters % nRegisterPerPage != 0, 1, 0)
+
+			//Se vier página
+			If ! Empty(jPath:GetJsonObject('page'))
+				nCurrentPage := Val(jPath:GetJsonObject('page'))
+			EndIf
+
+			//Se a página vier zerada ou negativa ou for maior que o máximo, será 1
+			If nCurrentPage <= 0 .Or. nCurrentPage > nPagesTotal
+				nCurrentPage := 1
+			EndIf
+
+			//Se a página for diferente de 1, pula os registros
+			If nCurrentPage != 1
+				QRY_TAB->(DbSkip((nCurrentPage-1) * nRegisterPerPage))
+			EndIf
+
+			//Adiciona os dados para a meta
+			jJsonMeta := JsonObject():New()
+			jJsonMeta['total']         := nTotalRegisters
+			jJsonMeta['current_page']  := nCurrentPage
+			jJsonMeta['total_page']    := nPagesTotal
+			jJsonMeta['total_items']   := nRegisterPerPage
+			jResponse['meta'] := jJsonMeta
+
+			//Percorre os registros
+			While ! QRY_TAB->(EoF())
+				nCurrentRegister++
+
+				//Se ultrapassar o limite, encerra o laço
+				If nCurrentRegister > nRegisterPerPage
+					Exit
+				EndIf
+
+				//Posiciona o registro e adiciona no retorno
+				DbSelectArea(cAliasWS)
+				(cAliasWS)->(DbGoTo(QRY_TAB->TABREC))
+
+				jData := JsonObject():New()
+				jData['filial'] := (cAliasWS)->A3_FILIAL
+				jData['cod'] := (cAliasWS)->A3_COD
+				jData['nome'] := (cAliasWS)->A3_NOME
+				jData['nreduz'] := (cAliasWS)->A3_NREDUZ
+				jData['mun'] := (cAliasWS)->A3_MUN
+				jData['est'] := (cAliasWS)->A3_EST
+				jData['cep'] := (cAliasWS)->A3_CEP
+				jData['tel'] := (cAliasWS)->A3_TEL
+				jData['dddtel'] := (cAliasWS)->A3_DDDTEL
+				jData['fax'] := (cAliasWS)->A3_FAX
+				jData['email'] := (cAliasWS)->A3_EMAIL
+				jData['tipo'] := (cAliasWS)->A3_TIPO
+				jData['comis'] := (cAliasWS)->A3_COMIS
+				jData['msblql'] := (cAliasWS)->A3_MSBLQL
+				aAdd(jResponse['objects'], jData)
+
+				QRY_TAB->(DbSkip())
+			EndDo
+		EndIf
+		QRY_TAB->(DbCloseArea())
+
+		//Do contrário, irá retornar uma mensagem que não foi encontrado
+	Else
+		oRest:setStatusCode(500)
+		jResponse['errorId']  := 'ALL001'
+		jResponse['error']    := 'Objeto vazio'
+		jResponse['solution'] := 'Falha ao executar, contate o Administrador'
+	EndIf
+
+	//Encerra retornando o JSON
+	oRest:setKeyHeaderResponse('Content-Type','application/json')
+	oRest:setResponse(jResponse:toJSON())
+Return
+
+/*/{Protheus.doc} User Function JDAPIVENPost
+API -CRUD-VENDEDORES - Inclui um novo registro
+@author Daniel Luiz Alves
+@since 25/10/2025
+@version 1.0
+@type User Function
+
+    }
+@example No seu Postman, supondo que seja localhost na porta 8401, fica:
+     http://127.0.0.1:8001/rest/JDAPIVEN/post/
+/*/
+
+	@Post("JDAPIVEN/post/")
+User Function JDAPIVENPost()
+	Local jResponse         := JsonObject():New()     As Json
+	Local jBody                                       As Json
+	Local cAliasWS          := 'SA3'                  As Character
+	Local aData             := {}                     As Array
+	Local nField            := 0                      As Numeric
+	Local nCurrentLine      := 0                      As Numeric
+	Local cFolder           := '\x_logs\'             As Character
+	Local cFileLog          := ''                     As Character
+	Local cErrorLog         := ''                     As Character
+	Local aLogAuto          := {}                     As Array
+	Local cBody             := oRest:getBodyRequest() As Character
+	Local cTipo             := ''                     As Character
+	Private lMsErroAuto     := .F.                    As Logical
+	Private lMsHelpAuto     := .T.                    As Logical
+	Private lAutoErrNoFile  := .T.                    As Logical
+
+	//Se veio um body
+	If ! Empty(cBody)
+
+		//Busca os dados que o usuário informou
+		jBody := JsonObject():New()
+		jBody:fromJson(cBody)
+
+		//Caso haja conteúdo
+		If jBody != Nil
+
+			DbSelectArea(cAliasWS)
+			(cAliasWS)->(DbSetOrder(1))
+
+			//Adiciona os dados do ExecAuto
+			aAdd(aData, {'A3_FILIAL',   jBody:GetJsonObject('filial'),   Nil})
+			aAdd(aData, {'A3_COD',      jBody:GetJsonObject('cod'),      Nil})
+			aAdd(aData, {'A3_NOME',     jBody:GetJsonObject('nome'),     Nil})
+			aAdd(aData, {'A3_NREDUZ',   jBody:GetJsonObject('nreduz'),   Nil})
+			aAdd(aData, {'A3_MUN',      jBody:GetJsonObject('mun'),      Nil})
+			aAdd(aData, {'A3_EST',      jBody:GetJsonObject('est'),      Nil})
+			aAdd(aData, {'A3_CEP',      jBody:GetJsonObject('cep'),      Nil})
+			aAdd(aData, {'A3_TEL',      jBody:GetJsonObject('tel'),      Nil})
+			aAdd(aData, {'A3_DDDTEL',   jBody:GetJsonObject('dddtel'),   Nil})
+			aAdd(aData, {'A3_FAX',      jBody:GetJsonObject('fax'),      Nil})
+			aAdd(aData, {'A3_EMAIL',    jBody:GetJsonObject('email'),    Nil})
+			aAdd(aData, {'A3_TIPO',     jBody:GetJsonObject('tipo'),     Nil})
+			aAdd(aData, {'A3_COMIS',    jBody:GetJsonObject('comis'),    Nil})
+			aAdd(aData, {'A3_MSBLQL',   jBody:GetJsonObject('msblql'),   Nil})
+
+			//Percorre os dados do execauto
+			For nField := 1 To Len(aData)
+				cTipo := GetSX3Cache(aData[nField][1], 'X3_TIPO')
+
+				//Se o campo for data, retira os hifens e faz a conversão
+				If cTipo == 'D'
+					aData[nField][2] := StrTran(aData[nField][2], '-', '')
+					aData[nField][2] := sToD(aData[nField][2])
+
+					//Se o campo for numérico, converte (substituindo vírgula por ponto)
+				ElseIf cTipo == 'N'
+					aData[nField][2] := StrTran(aData[nField][2], ',', '.')
+					aData[nField][2] := Val(aData[nField][2])
+				EndIf
+			Next
+
+			//Chama a inclusão automática
+			MsExecAuto({|x, y| MATA040(x, y)}, aData, 3)
+
+			//Se houve erro, gera um arquivo de log dentro do diretório da protheus data
+			If lMsErroAuto
+
+				//Monta o texto do Error Log que será salvo
+				cErrorLog   := ''
+				aLogAuto    := GetAutoGrLog()
+				For nCurrentLine := 1 To Len(aLogAuto)
+					cErrorLog += aLogAuto[nCurrentLine] + CRLF
+				Next nCurrentLine
+
+				//Se a pasta de Logs não existir, cria ela
+				If ! ExistDir(cFolder)
+					MakeDir(cFolder)
+				EndIf
+
+				//Grava o arquivo de log
+				cFileLog := 'SA3_post_' + dToS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+				MemoWrite(cFolder + cFileLog, cErrorLog)
+
+				//Define o retorno para o WebService
+				oRest:setStatusCode(500)
+				jResponse['errorId']  := 'NOV002'
+				jResponse['error']    := 'Erro na inclusao do registro'
+				jResponse['solution'] := 'Nao foi possivel incluir o registro, foi gerado um arquivo de log em ' + cFolder + cFileLog + ' '
+
+				//Senão, define o retorno
+			Else
+				jResponse['note']     := 'Registro incluido com sucesso'
+			EndIf
+		Else
+			//Define o retorno para o WebService
+			oRest:setStatusCode(500)
+			jResponse['errorId']  := 'NOV003'
+			jResponse['error']    := 'Falha na conversao string para JSON'
+			jResponse['solution'] := 'Nao foi possivel capturar o Body e transformar em JSON, contate o Administrador'
+		EndIf
+
+	Else
+		oRest:setStatusCode(500)
+		jResponse['errorId']  := 'NOV001'
+		jResponse['error']    := 'Body vazio'
+		jResponse['solution'] := 'Informe o Body da requisicao'
+	EndIf
+
+	//Encerra retornando o JSON
+	oRest:setKeyHeaderResponse('Content-Type','application/json')
+	oRest:setResponse(jResponse:toJSON())
+Return
+
+/*/{Protheus.doc} User Function JDAPIVENPut
+API -CRUD-VENDEDORES - Atualiza o registro
+@author Daniel Luiz Alves
+@since 25/10/2025
+@version 1.0
+@type User Function
+
+@example No seu Postman, supondo que seja localhost na porta 8401, fica:
+     http://127.0.0.1:8081/rest/JDAPIVEN/put/id?id=XXXX
+/*/
+	@Put("JDAPIVEN/put/id/")
+User Function JDAPIVENPut()
+	Local jResponse         := JsonObject():New()     As Json
+	Local jBody                                       As Json
+	Local jPath                                       As Json
+	Local cAliasWS          := 'SA3'                  As Character
+	Local aData             := {}                     As Array
+	Local nField            := 0                      As Numeric
+	Local nCurrentLine      := 0                      As Numeric
+	Local cFolder           := '\x_logs\'             As Character
+	Local cLogFile          := ''                     As Character
+	Local cErrorLog         := ''                     As Character
+	Local aLogAuto          := {}                     As Array
+	Local cBody             := oRest:getBodyRequest() As Character
+	Local nComis            := 0                      As Numeric
+	Private lMsErroAuto     := .F.                    As Logical
+	Private lMsHelpAuto     := .T.                    As Logical
+	Private lAutoErrNoFile  := .T.                    As Logical
+
+	//Se veio um body
+	If ! Empty(cBody)
+
+		//Busca os dados que o usuário informou
+		jPath := JsonObject():New()
+		jPath := oRest:getQueryRequest()
+
+		//Busca os dados que o usuário informou
+		jBody := JsonObject():New()
+		jBody:fromJson(cBody)
+
+		//Caso haja conteúdo
+		If jPath != Nil .And. ! Empty(jPath:GetJsonObject('id'))
+
+			DbSelectArea(cAliasWS)
+			(cAliasWS)->(DbSetOrder(1))
+
+			//Se não encontrar o registro
+			If ! (cAliasWS)->(MsSeek(FWxFilial(cAliasWS) + jPath:GetJsonObject('id')))
+				oRest:setStatusCode(500)
+				jResponse['errorId']  := 'ALT004'
+				jResponse['error']    := 'Registro nao encontrado'
+				jResponse['solution'] := 'Codigo nao encontrado na tabela ' + cAliasWS + ', portanto nao pode ser alterado'
+
+			Else
+				//Converte comissão para numérico
+				nComis := Val(jBody:GetJsonObject('comis'))
+
+				//Adiciona os dados do ExecAuto
+				aAdd(aData, {'A3_FILIAL',   jBody:GetJsonObject('filial'),   Nil})
+				aAdd(aData, {'A3_COD',      jBody:GetJsonObject('cod'),      Nil})
+				aAdd(aData, {'A3_NOME',     jBody:GetJsonObject('nome'),     Nil})
+				aAdd(aData, {'A3_NREDUZ',   jBody:GetJsonObject('nreduz'),   Nil})
+				aAdd(aData, {'A3_MUN',      jBody:GetJsonObject('mun'),      Nil})
+				aAdd(aData, {'A3_EST',      jBody:GetJsonObject('est'),      Nil})
+				aAdd(aData, {'A3_CEP',      jBody:GetJsonObject('cep'),      Nil})
+				aAdd(aData, {'A3_TEL',      jBody:GetJsonObject('tel'),      Nil})
+				aAdd(aData, {'A3_DDDTEL',   jBody:GetJsonObject('dddtel'),   Nil})
+				aAdd(aData, {'A3_FAX',      jBody:GetJsonObject('fax'),      Nil})
+				aAdd(aData, {'A3_EMAIL',    jBody:GetJsonObject('email'),    Nil})
+				aAdd(aData, {'A3_TIPO',     jBody:GetJsonObject('tipo'),     Nil})
+				aAdd(aData, {'A3_COMIS',    nComis,                          Nil})
+				aAdd(aData, {'A3_MSBLQL',   jBody:GetJsonObject('msblql'),   Nil})
+
+				//Percorre os dados do execauto
+				For nField := 1 To Len(aData)
+					//Se o campo for data, retira os hifens e faz a conversão
+					If GetSX3Cache(aData[nField][1], 'X3_TIPO') == 'D'
+						If ValType(aData[nField][2]) == 'C' .And. !Empty(aData[nField][2])
+							aData[nField][2] := StrTran(aData[nField][2], '-', '')
+							aData[nField][2] := sToD(aData[nField][2])
+						EndIf
+					EndIf
+				Next
+
+				//Chama a alteração automática (operação 4)
+				MsExecAuto({|x, y| MATA040(x, y)}, aData, 4)
+
+				//Se houve erro, gera um arquivo de log
+				If lMsErroAuto
+					cErrorLog   := ''
+					aLogAuto    := GetAutoGrLog()
+					For nCurrentLine := 1 To Len(aLogAuto)
+						cErrorLog += aLogAuto[nCurrentLine] + CRLF
+					Next nCurrentLine
+
+					If ! ExistDir(cFolder)
+						MakeDir(cFolder)
+					EndIf
+
+					cLogFile := 'SA3_put_' + dToS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+					MemoWrite(cFolder + cLogFile, cErrorLog)
+
+					oRest:setStatusCode(500)
+					jResponse['errorId']  := 'ALT002'
+					jResponse['error']    := 'Erro na alteracao do registro'
+					jResponse['solution'] := 'Nao foi possivel alterar o registro, foi gerado um arquivo de log em ' + cFolder + cLogFile
+
+				Else
+					oRest:setStatusCode(200)
+					jResponse['note']     := 'Registro alterado com sucesso'
+				EndIf
+			EndIf
+		Else
+			oRest:setStatusCode(500)
+			jResponse['errorId']  := 'ALT003'
+			jResponse['error']    := 'Falha na conversao string para JSON e ou codigo vazio'
+			jResponse['solution'] := 'Nao foi possivel capturar o Body e transformar em JSON, contate o Administrador ou o codigo informado esta vazio'
+		EndIf
+
+	Else
+		oRest:setStatusCode(500)
+		jResponse['errorId']  := 'NOV001'
+		jResponse['error']    := 'Body vazio'
+		jResponse['solution'] := 'Informe o Body da requisicao'
+	EndIf
+
+	//Encerra retornando o JSON
+	oRest:setKeyHeaderResponse('Content-Type','application/json')
+	oRest:setResponse(jResponse:toJSON())
+Return
+
+/*/{Protheus.doc} User Function JDAPIVENDeleteId
+API -CRUD-VENDEDORES - Apaga 1 registro
+@author Daniel Luiz Alves
+@since 25/10/2025
+@version 1.0
+@type User Function
+@obs Parâmetros a receber na requisição:
+    id = Código do Registro na Tabela
+@example No seu Postman, supondo que seja localhost na porta 8401, fica:
+     http://127.0.0.1:8401/rest/JDAPIVEN/delete/id?id=XXXX
+/*/
+
+	@Delete("JDAPIVEN/delete/id/")
+User Function JDAPIVENDeleteId()
+	Local jResponse         := JsonObject():New() As Json
+	Local jPath                                   As Json
+	Local cAliasWS          := 'SA3'              As Character
+	Local aData             := {}                 As Array
+	Local nField            := 0                  As Numeric
+	Local nCurrentLine      := 0                  As Numeric
+	Local cFolder           := '\x_logs\'         As Character
+	Local cLogFile          := ''                 As Character
+	Local cErrorLog         := ''                 As Character
+	Local aLogAuto          := {}                 As Array
+	Private lMsErroAuto     := .F.                As Logical
+	Private lMsHelpAuto     := .T.                As Logical
+	Private lAutoErrNoFile  := .T.                As Logical
+
+	//Busca os dados que o usuário informou
+	jPath := JsonObject():New()
+	jPath := oRest:getQueryRequest()
+
+	//Caso haja conteúdo e não esteja vazio o ID
+	If jPath != Nil .And. ! Empty(jPath:GetJsonObject('id'))
+
+		DbSelectArea(cAliasWS)
+		(cAliasWS)->(DbSetOrder(1))
+
+		//Se não encontrar o registro
+		If ! (cAliasWS)->(MsSeek(FWxFilial(cAliasWS) + jPath:GetJsonObject('id') ))
+			oRest:setStatusCode(500)
+			jResponse['errorId']  := 'DEL002'
+			jResponse['error']    := 'ID não encontrado'
+			jResponse['solution'] := 'Código ID não encontrado na tabela ' + cAliasWS + ', informe outro código'
+
+			//Define o retorno
+		Else
+
+			//Adiciona os dados do ExecAuto
+			aAdd(aData, {'A3_FILIAL',   (cAliasWS)->A3_FILIAL,   Nil})
+			aAdd(aData, {'A3_COD',   (cAliasWS)->A3_COD,   Nil})
+			aAdd(aData, {'A3_NOME',   (cAliasWS)->A3_NOME,   Nil})
+			aAdd(aData, {'A3_NREDUZ',   (cAliasWS)->A3_NREDUZ,   Nil})
+			aAdd(aData, {'A3_MUN',   (cAliasWS)->A3_MUN,   Nil})
+			aAdd(aData, {'A3_EST',   (cAliasWS)->A3_EST,   Nil})
+			aAdd(aData, {'A3_CEP',   (cAliasWS)->A3_CEP,   Nil})
+			aAdd(aData, {'A3_TEL',   (cAliasWS)->A3_TEL,   Nil})
+			aAdd(aData, {'A3_DDDTEL',   (cAliasWS)->A3_DDDTEL,   Nil})
+			aAdd(aData, {'A3_FAX',   (cAliasWS)->A3_FAX,   Nil})
+			aAdd(aData, {'A3_EMAIL',   (cAliasWS)->A3_EMAIL,   Nil})
+			aAdd(aData, {'A3_TIPO',   (cAliasWS)->A3_TIPO,   Nil})
+			aAdd(aData, {'A3_COMIS',   (cAliasWS)->A3_COMIS,   Nil})
+			aAdd(aData, {'A3_MSBLQL',   (cAliasWS)->A3_MSBLQL,   Nil})
+
+			//Percorre os dados do execauto
+			For nField := 1 To Len(aData)
+				//Se o campo for data, retira os hifens e faz a conversão
+				If GetSX3Cache(aData[nField][1], 'X3_TIPO') == 'D'
+					aData[nField][2] := StrTran(aData[nField][2], '-', '')
+					aData[nField][2] := sToD(aData[nField][2])
+				EndIf
+			Next
+
+			//Chama a exclusão automática
+			MsExecAuto({|x, y| MATA040(x, y)}, aData, 5)
+
+			//Se houve erro, gera um arquivo de log dentro do diretório da protheus data
+			If lMsErroAuto
+
+				//Monta o texto do Error Log que será salvo
+				cErrorLog   := ''
+				aLogAuto    := GetAutoGrLog()
+				For nCurrentLine := 1 To Len(aLogAuto)
+					cErrorLog += aLogAuto[nCurrentLine] + CRLF
+				Next nCurrentLine
+
+				//Se a pasta de Logs não existir, cria ela
+				If ! ExistDir(cFolder)
+					MakeDir(cFolder)
+				EndIf
+
+				//Grava o arquivo de log
+				cLogFile := 'SA3_delete_' + dToS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+				MemoWrite(cFolder + cLogFile, cErrorLog)
+
+				//Define o retorno para o WebService
+				oRest:setStatusCode(500)
+				jResponse['errorId']  := 'DEL003'
+				jResponse['error']    := 'Erro na exclusão do registro'
+				jResponse['solution'] := 'Nao foi possivel excluir o registro, foi gerado um arquivo de log em ' + cFolder + cLogFile + ' '
+
+				//Senão, define o retorno
+			Else
+				jResponse['note']     := 'Registro excluido com sucesso'
+			EndIf
+		EndIf
+
+		//Do contrário, irá retornar uma mensagem que não foi encontrado
+	Else
+		oRest:setStatusCode(500)
+		jResponse['errorId']  := 'DEL001'
+		jResponse['error']    := 'ID vazio'
+		jResponse['solution'] := 'Informe o ID'
+	EndIf
+
+	//Encerra retornando o JSON
+	oRest:setKeyHeaderResponse('Content-Type','application/json')
+	oRest:setResponse(jResponse:toJSON())
+Return
