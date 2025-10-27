@@ -345,7 +345,7 @@ Return
 /*/{Protheus.doc} User Function JDAPIVENPut
 API -CRUD-VENDEDORES - Atualiza o registro
 @author Daniel Luiz Alves
-@since 25/10/2025
+@since 25/10/2025 
 @version 1.0
 @type User Function
 
