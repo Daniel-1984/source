@@ -1,0 +1,52 @@
+#Include 'Protheus.ch'
+#Include 'tlpp-core.th'
+
+User Function PedidoDeVenda()
+
+	Local aCabec := {} As Array
+	Local aItem := {} As Array
+	Local aItens := {} As Array
+
+	Private lMsErroAuto := .F. As Logical
+	Private lAutoErrNoFile := .F. As Logical
+
+	RpcSetEnv('99','01')
+
+	// Preenchimento dos dados do cabeçalho
+	Aadd(aCabec, {'C5_TIPO'     , 'N'     , Nil}) // Tipo N - Normal
+	Aadd(aCabec, {'C5_CLIENTE'  , '000001', Nil}) // Cliente
+	Aadd(aCabec, {'C5_LOJACLI'  , '99'    , Nil}) // Loja
+	Aadd(aCabec, {'C5_CONDPAG'  , '001'   , Nil}) // Cond. Pagto
+
+	// Item 1
+	aItem := {}
+	AAdd(aItem, {'C6_ITEM'      , '01'      , Nil}) // Item
+	AAdd(aItem, {'C6_PRODUTO'   , '000001'   , Nil}) // Cod.Produto
+	AAdd(aItem, {'C6_QTDVEN'    , 1         , Nil}) // Quantidade
+
+	Aadd(aItens, aItem)
+
+	// Item 2
+	aItem := {}
+	AAdd(aItem, {'C6_ITEM'      , '02'      , Nil}) // Item
+	AAdd(aItem, {'C6_PRODUTO'   , '000002'   , Nil}) // Cod.Produto
+	AAdd(aItem, {'C6_QTDVEN'    , 1         , Nil}) // Quantidade
+
+	Aadd(aItens, aItem)
+
+	MSExecAuto({|a, b, c, d| MATA410(a, b, c, d)}, aCabec, aItens, 3, .F.)
+
+	If !lMsErroAuto
+
+		ConOut('Incluido com sucesso! Pedido: ' + AllTrim(SC5->C5_NUM) + '.')
+
+	Else
+
+		ConOut('Falha na geracao do pedido.')
+		MostraErro()
+
+	EndIf
+
+	RpcClearEnv()
+
+Return
